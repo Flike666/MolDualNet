@@ -1,0 +1,144 @@
+# 小分子性质预测模型配置文件 - 107K完整数据集
+
+# 数据配置（107K完整数据集）
+data:
+  base_path: "data"
+  merged_file: "merged_dataset.csv"  # 使用完整107K数据集
+  train_ratio: 0.8
+  val_ratio: 0.1
+  test_ratio: 0.1
+  random_seed: 42
+  # Random SMILES augmentation (train only)
+  smiles_augmentation:
+    enabled: true
+    random_smiles_prob: 0.5
+
+# 任务配置 - 多任务学习（13个性质）
+tasks:
+  # regression tasks only
+  ESOL_logS:
+    task_type: "regression"
+    loss_weight: 1.0
+
+  Lipophilicity_logD:
+    task_type: "regression"
+    loss_weight: 1.0
+
+  FreeSolv_hydration:
+    task_type: "regression"
+    loss_weight: 1.0
+
+  BACE_pIC50:
+    task_type: "regression"
+    loss_weight: 1.0
+model:
+  # GNN配置
+  gnn:
+    node_input_dim: 82  # 原子特征维度
+    edge_input_dim: 20  # 键特征维度 (12维2D特征 + 8维3D特征)
+    hidden_dim: 256     # 保持容量
+    output_dim: 256     # 保持容量
+    num_layers: 6       # 保持深度
+    dropout: 0.15       # 稍微增加dropout
+    num_heads: 8        # 保持注意力头数
+
+  # 3D几何特征配置
+  geometry_3d:
+    enabled: true                            # 启用3D几何特征
+    coords_cache_path: "data/3d_coords_cache_107k.pkl"  # 107K数据集的3D坐标缓存
+    distance_rbf_centers: [0.5, 1.0, 1.5, 2.0]  # RBF编码中心点 (Angstrom)
+    distance_rbf_sigma: 0.5                  # RBF标准差
+    max_distance: 10.0                       # 最大距离阈值 (用于归一化)
+    force_field: "MMFF"                      # 力场类型: "MMFF" 或 "UFF"
+    fallback_on_failure: true                # 3D生成失败时使用零填充
+
+  # Transformer配置
+  transformer:
+    vocab_size: 100  # SMILES词表大小
+    max_seq_len: 256
+    embed_dim: 256   # 保持容量
+    num_heads: 8     # 保持注意力头数
+    num_layers: 6    # 保持深度
+    dropout: 0.15    # 稍微增加dropout
+    output_dim: 256  # 保持容量
+
+  # 专家特征配置 (Morgan FP + RDKit Descriptors)
+  expert_features:
+    enabled: true  # 启用专家特征
+    use_precomputed: true  # 使用预计算特征(快速)
+    features_cache_path: "data/expert_features_107k.pkl"  # 专家特征缓存
+    input_dim: 1033  # Morgan FP (1024) + RDKit Descriptors (9)
+    output_dim: 256  # 专家特征投影维度
+    dropout: 0.1
+
+  # 融合层配置
+  fusion:
+    hidden_dim: 512  # 保持容量
+    dropout: 0.15  # 降低dropout提高稳定性
+    # 交叉注意力融合配置
+    use_cross_attention: true  # ✅ 重新启用交叉注意力(已优化稳定性)
+    cross_attention_layers: 2   # 减少层数提高稳定性
+    cross_attention_heads: 8    # 保持注意力头数
+    allow_cross_attention_toggle: true
+    modality_dropout_p: 0.2
+    modality_dropout_keep_at_least_one: true
+
+# 训练配置（107K数据集优化版）
+training:
+  epochs: 150          # 增加轮数以充分训练
+  batch_size: 96       # 保守提速：增大batch size
+  learning_rate: 0.00006  # 按batch size比例增加学习率
+  weight_decay: 0.00001   # 保持weight decay
+  num_workers: 0       # Windows下多进程DataLoader可能导致崩溃
+  pin_memory: false    # 关闭以匹配num_workers=0
+  scheduler: "cosine"  # 使用cosine scheduler
+  warmup_epochs: 5     # 适当延长warmup（数据集更大）
+  two_stage:
+    enabled: true
+    stage1_epochs: 15
+    stage1_use_cross_attention: false
+    stage2_use_cross_attention: true
+  gradient_clip: 0.5   # 保持严格的梯度裁剪
+  use_huber_loss: true # 使用Huber损失替代MSE，对异常值更鲁棒
+
+  # 早停配置
+  early_stopping:
+    enabled: false
+    patience: 20       # 增加patience（数据集更大，需要更多轮次）
+    min_delta: 0.0001
+    monitor: "val_loss"
+
+  # 多任务损失权重
+  regression_weight: 1.0
+
+# 预训练配置
+pretrain:
+  # 预训练任务权重
+  mlm_weight: 1.0           # Masked Language Model权重
+  map_weight: 1.0           # Masked Atom Prediction权重
+  contrastive_weight: 0.5   # 对比学习权重
+
+  # 预训练参数
+  mask_prob: 0.15           # 遮蔽概率
+  temperature: 0.07         # 对比学习温度参数
+
+  # 预训练数据
+  pretrain_data: null       # 预训练数据路径（CSV文件）
+  pretrain_epochs: 50       # 预训练轮数
+  pretrain_batch_size: 64   # 预训练batch size
+  pretrain_lr: 0.0001       # 预训练学习率
+
+  # 预训练模型路径（用于加载预训练权重）
+  pretrained_model: null    # 预训练模型路径，如 "pretrained/best_pretrained.pt"
+
+# 保存配置
+save:
+  checkpoint_dir: "checkpoints"
+  results_dir: "results"
+  save_best_only: true
+  save_every_n_epochs: 10
+
+# 日志配置
+logging:
+  level: "INFO"
+  print_every: 20  # 每N个batch打印一次（数据集更大，降低打印频率）

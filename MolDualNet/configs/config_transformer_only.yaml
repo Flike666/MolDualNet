@@ -1,0 +1,112 @@
+# Transformer-Only消融实验配置
+# 目标：参数量匹配完整模型（~24M），但只使用Transformer
+
+# 数据配置（与完整模型相同）
+data:
+  base_path: "data"
+  merged_file: "merged_dataset.csv"
+  train_ratio: 0.8
+  val_ratio: 0.1
+  test_ratio: 0.1
+  random_seed: 42
+
+# 任务配置（与完整模型相同）
+tasks:
+  ESOL_logS:
+    task_type: "regression"
+    loss_weight: 1.0
+
+  Lipophilicity_logD:
+    task_type: "regression"
+    loss_weight: 1.0
+
+  FreeSolv_hydration:
+    task_type: "regression"
+    loss_weight: 1.0
+
+  BACE_pIC50:
+    task_type: "regression"
+    loss_weight: 1.0
+
+model:
+  # GNN配置 - 最小化以忽略其贡献
+  gnn:
+    node_input_dim: 82
+    edge_input_dim: 12      # 不使用3D特征
+    hidden_dim: 8           # 极小的隐藏层
+    output_dim: 8           # 极小的输出维度
+    num_layers: 1           # 只有1层
+    num_heads: 1            # 1个注意力头
+    dropout: 0.0            # 不使用dropout
+
+  # Transformer配置 - 大型配置以匹配总参数量
+  transformer:
+    vocab_size: 100         # 将由tokenizer自动更新
+    max_seq_len: 256
+    embed_dim: 320          # 大型embedding维度
+    num_heads: 10           # 必须能被embed_dim整除
+    num_layers: 12          # 深层网络
+    dropout: 0.15
+    output_dim: 512         # 大型输出维度
+
+  # 3D几何特征配置 - 禁用
+  geometry_3d:
+    enabled: false
+
+  # 专家特征配置 - 禁用
+  expert_features:
+    enabled: false
+
+  # 融合层配置 - 不使用交叉注意力
+  fusion:
+    hidden_dim: 512         # 融合层维度
+    dropout: 0.15
+    use_cross_attention: false  # 简单拼接
+
+# 训练配置（降低batch_size以适应GPU内存）
+training:
+  epochs: 30
+  batch_size: 8           # 降低至8以避免OOM
+  learning_rate: 0.00006
+  weight_decay: 0.00001
+  num_workers: 0
+  pin_memory: false
+  scheduler: "cosine"
+  warmup_epochs: 5
+  gradient_clip: 0.5
+  use_huber_loss: true
+
+  # 早停配置
+  early_stopping:
+    enabled: true
+    patience: 20
+    min_delta: 0.0001
+    monitor: "val_loss"
+
+  # 多任务损失权重
+  regression_weight: 1.0
+
+# 预训练配置（不使用）
+pretrain:
+  mlm_weight: 1.0
+  map_weight: 1.0
+  contrastive_weight: 0.5
+  mask_prob: 0.15
+  temperature: 0.07
+  pretrain_data: null
+  pretrain_epochs: 50
+  pretrain_batch_size: 64
+  pretrain_lr: 0.0001
+  pretrained_model: null
+
+# 保存配置
+save:
+  checkpoint_dir: "results_ablation_regression/transformer_only/checkpoints"
+  results_dir: "results_ablation_regression/transformer_only"
+  save_best_only: true
+  save_every_n_epochs: 10
+
+# 日志配置
+logging:
+  level: "INFO"
+  print_every: 20
