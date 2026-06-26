@@ -139,19 +139,6 @@ MolDualNet/
 - **Device auto-detection**: CUDA > MPS > CPU. Override with `--device cuda|mps|cpu`.
 - **Windows**: Set `num_workers: 0` and `pin_memory: false` in config.
 
-## Citation
-
-If you use MolDualNet in your research, please cite:
-
-```bibtex
-@article{moldualnet2026,
-  title={MolDualNet: a multimodal dual-stream network for molecular property prediction},
-  author={[Authors]},
-  journal={Nature Communications},
-  year={2026}
-}
-```
-
 ## License
 
 This project is licensed under the MIT License. See [LICENSE](LICENSE) for details.
